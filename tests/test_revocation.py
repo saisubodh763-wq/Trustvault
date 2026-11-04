@@ -162,3 +162,16 @@ def test_session_token_is_stored_only_as_a_hash(app):
     ids = [r["id"] for r in db.execute("SELECT id FROM sessions")]
     assert token not in ids and len(ids) >= 1
     assert all(len(i) == 64 for i in ids)
+
+
+def test_disabled_flag_alone_blocks_a_live_session_even_if_revocation_was_missed(app):
+    """Defence in depth: if some path flips `active` without revoking sessions
+    (a bug, a manual SQL fix), the per-request user check still refuses."""
+    carol = Api(app, "carol")
+    assert carol.get("/api/documents").status_code == 200
+    db = raw_db(app)
+    db.execute("UPDATE users SET active=0 WHERE email=?", (email("carol"),))
+    assert db.execute("SELECT COUNT(*) c FROM sessions WHERE revoked_at IS NULL AND user_id=?",
+                      (user_ids(app)["carol"],)).fetchone()["c"] >= 1      # session really is still live
+    assert carol.get("/api/documents").status_code == 401
+    assert carol.get(f"/api/documents/{doc_ids(app)[ACME]}/download").status_code == 401

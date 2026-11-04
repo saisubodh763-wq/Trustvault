@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: trustvault
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
+    disk: { name: tv-data, mountPath: /data, sizeGB: 1 }   # persistent disk (required: SQLite + encrypted blobs)
+    envVars:
+      # Each must be 64 hex chars and different from the other (see .env.example). Enter them in the dashboard.
+      - { key: TRUSTVAULT_MASTER_KEY, sync: false }
+      - { key: TRUSTVAULT_AUDIT_KEY, sync: false }
+      - { key: TRUSTVAULT_PROXY_HOPS, value: "1" }
+      - { key: TRUSTVAULT_SEED_DEMO, value: "1" }

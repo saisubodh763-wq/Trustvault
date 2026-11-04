@@ -208,3 +208,14 @@ def test_audit_log_endpoint_is_admin_only_and_filterable(app):
     assert r["total"] == 1 and r["items"][0]["actor_email"] == email("dave")
     r = admin.get(f"/api/admin/audit?doc_id={doc_ids(app)[SALARY]}").get_json()
     assert {i["action"] for i in r["items"]} >= {"document.upload", "document.access_denied"}
+
+
+def test_rewriting_only_the_stored_link_field_is_detected(app):
+    """prev_hash is not part of the signed row content, so only the explicit
+    link check catches an edit to it."""
+    Api(app, "carol").get("/api/documents")
+    seq = audit_rows(app)[-1]["seq"]
+    _tamper(app, "UPDATE audit_log SET prev_hash=? WHERE seq=?", "f" * 64, seq)
+    result = audit_mod.verify(raw_db(app), app.config["TV"])
+    assert result["ok"] is False and result["first_bad_seq"] == seq
+    assert result["problem"] == "broken link to previous record"
