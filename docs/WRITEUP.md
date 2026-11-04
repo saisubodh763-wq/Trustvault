@@ -1,7 +1,7 @@
 # Write-up
 
 ## What I built
-TrustVault: authentication with three roles; upload/organise/search/manage documents; per-document read/edit grants to named people; owner-controlled grant and revoke (with optional expiry); a tamper-evident audit trail that records refused attempts; upload validation; an administrator view of activity, alerts and chain integrity; versions; soft delete with recovery and crypto-shred purge; rule-based sharing suggestions that cannot grant; and 189 automated tests plus a script that deletes authorisation checks one at a time to prove the tests notice.
+TrustVault: authentication with three roles; upload/organise/search/manage documents; per-document read/edit grants to named people; owner-controlled grant and revoke (with optional expiry); a tamper-evident audit trail that records refused attempts and is anchored off-box so truncation is detectable; upload validation; an administrator view of activity, alerts and chain integrity; versions; soft delete with recovery and crypto-shred purge; rule-based sharing suggestions that cannot grant; and 207 automated tests plus a script that deletes authorisation checks one at a time to prove the tests notice.
 
 ## The decisions that matter
 1. **One decision function.** `authz.authorize(db, user, doc_id, action)`. Every route with a document id is wrapped by one decorator that calls it and hands the handler the *authorised row*. A handler never fetches a document by id itself. If you delete the call, the handler never receives a row and the isolation tests fail (`scripts/mutation_check.py` mutation 10 does exactly this).
@@ -13,7 +13,7 @@ TrustVault: authentication with three roles; upload/organise/search/manage docum
 7. **No folders/groups.** Inheritance is the classic source of over-sharing; I preferred verbose and predictable.
 
 ## What I deliberately did not build
-External sharing links (every recipient is an account), MFA/SSO, malware scanning, master-key rotation tooling, external audit anchoring, break-glass recovery, groups/folders, a general API rate limiter, any LLM call. Reasons are in `THREATS.md` §G.
+External sharing links (every recipient is an account), MFA/SSO, malware scanning, master-key rotation tooling, break-glass recovery, groups/folders, a general API rate limiter, any LLM call. Reasons are in `THREATS.md` §G.
 
 ## How AI was used, and where it was wrong
 See `PROMPTS.md`. Short version: the assistant wrote most of the code and tests quickly, and its most dangerous errors were quiet ones — assertions that could never fail, a 403 that confirmed a deleted document existed, and checks that no test depended on.

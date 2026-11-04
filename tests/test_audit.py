@@ -219,3 +219,219 @@ def test_rewriting_only_the_stored_link_field_is_detected(app):
     result = audit_mod.verify(raw_db(app), app.config["TV"])
     assert result["ok"] is False and result["first_bad_seq"] == seq
     assert result["problem"] == "broken link to previous record"
+
+
+# ------------------------------------------------------------------ off-box anchors
+
+@pytest.fixture
+def anchored(tmp_path, monkeypatch):
+    """An app whose anchor file lives OUTSIDE the data directory."""
+    from conftest import build_app
+    app = build_app(tmp_path / "data")
+    cfg = app.config["TV"]
+    cfg.anchor_file = tmp_path / "offbox" / "anchors.txt"
+    return app, cfg
+
+
+def test_truncating_the_tail_passes_the_chain_check_but_not_the_anchor(anchored):
+    """The attack the chain alone cannot see: delete the newest records."""
+    app, cfg = anchored
+    Api(app, "dave").get(f"/api/documents/{doc_ids(app)[SALARY]}")   # an embarrassing record
+    db = raw_db(app)
+    audit_mod.write_anchor(db, cfg)
+    anchored_seq = audit_mod.head(db)["seq"]
+    _tamper(app, "DELETE FROM audit_log WHERE seq >= ?", anchored_seq - 2)   # drop the newest rows
+    db = raw_db(app)
+    assert audit_mod.verify(db, cfg)["ok"] is True                    # a shorter chain is still valid...
+    result = audit_mod.verify_anchors(db, cfg)
+    assert result["ok"] is False and "missing" in result["problem"]   # ...but the anchor notices
+    alerts = Api(app, "admin").get("/api/admin/alerts").get_json()["items"]
+    assert alerts[0]["kind"] == "audit_anchor_mismatch" and alerts[0]["severity"] == "critical"
+    assert Api(app, "admin").get("/api/admin/audit/verify").get_json()["anchors"]["ok"] is False
+
+
+def test_rewriting_an_anchored_record_is_detected_by_the_anchor(anchored):
+    app, cfg = anchored
+    audit_mod.write_anchor(raw_db(app), cfg)
+    seq = audit_mod.head(raw_db(app))["seq"]
+    _tamper(app, "UPDATE audit_log SET hash=? WHERE seq=?", "a" * 64, seq)
+    assert audit_mod.verify_anchors(raw_db(app), cfg)["ok"] is False
+
+
+def test_a_good_chain_with_anchors_verifies_and_grows(anchored):
+    app, cfg = anchored
+    audit_mod.write_anchor(raw_db(app), cfg)
+    Api(app, "carol").get("/api/documents")
+    audit_mod.write_anchor(raw_db(app), cfg)
+    result = audit_mod.verify_anchors(raw_db(app), cfg)
+    assert result == {"configured": True, "ok": True, "anchors_checked": 2, "problem": None}
+
+
+def test_forged_or_mangled_anchor_lines_are_rejected(anchored):
+    app, cfg = anchored
+    audit_mod.write_anchor(raw_db(app), cfg)
+    good = cfg.anchor_file.read_text()
+    seq, hash_, ts, mac = good.split()
+    for bad in (f"{seq} {hash_} {ts} {'0' * 64}\n",              # wrong MAC
+                f"{seq} {'b' * 64} {ts} {mac}\n",                 # edited hash, old MAC
+                "garbage\n", "1 2 3\n"):
+        cfg.anchor_file.write_text(bad)
+        r = audit_mod.verify_anchors(raw_db(app), cfg)
+        assert r["ok"] is False, bad
+
+
+def test_unconfigured_and_empty_anchoring_are_reported_not_hidden(app, anchored):
+    assert audit_mod.verify_anchors(raw_db(app), app.config["TV"])["configured"] is False
+    kinds = {a["kind"] for a in Api(app, "admin").get("/api/admin/alerts").get_json()["items"]}
+    assert "audit_anchor_off" in kinds                                  # a visible nudge, not silence
+    a, cfg = anchored
+    assert audit_mod.verify_anchors(raw_db(a), cfg)["ok"] is None       # configured, none written
+    kinds = {x["kind"] for x in Api(a, "admin").get("/api/admin/alerts").get_json()["items"]}
+    assert "audit_anchor_missing" in kinds
+
+
+def test_we_refuse_to_anchor_a_chain_that_is_already_broken(anchored):
+    app, cfg = anchored
+    _tamper(app, "UPDATE audit_log SET actor_email='x@y.z' WHERE seq=1")
+    with pytest.raises(RuntimeError, match="fails verification"):
+        audit_mod.write_anchor(raw_db(app), cfg)
+
+
+def test_the_anchor_file_cannot_be_placed_inside_the_data_directory(tmp_path):
+    from trustvault.config import Config
+    import os
+    for where in (tmp_path / "anchors.txt", tmp_path / "sub" / "anchors.txt"):
+        cfg = Config(data_dir=tmp_path, master_key=os.urandom(32), audit_key=os.urandom(32),
+                     anchor_file=where)
+        with pytest.raises(RuntimeError, match="OUTSIDE"):
+            cfg.validate()
+
+
+def test_anchor_cli_writes_a_line_and_audit_verify_exit_codes(anchored):
+    app, cfg = anchored
+    runner = app.test_cli_runner()
+    out = runner.invoke(args=["audit-anchor"])
+    assert out.exit_code == 0 and len(out.output.split()) == 4
+    assert runner.invoke(args=["audit-verify"]).exit_code == 0
+    _tamper(app, "DELETE FROM audit_log WHERE seq = (SELECT MAX(seq) FROM audit_log)")
+    assert runner.invoke(args=["audit-verify"]).exit_code == 2           # anchor catches it
+
+
+# ------------------------------------------------------------------ off-box anchors
+
+@pytest.fixture
+def anchored_app(tmp_path):
+    from conftest import build_app
+    anchor = tmp_path.parent / (tmp_path.name + "-anchors") / "anchors.log"   # outside data_dir
+    app = build_app(tmp_path / "data", anchor_file=anchor)
+    yield app, anchor
+
+
+def _anchor(app):
+    return audit_mod.write_anchor(raw_db(app), app.config["TV"])
+
+
+def test_anchor_must_live_outside_the_data_directory(tmp_path):
+    import os
+    from trustvault.config import Config
+    with pytest.raises(RuntimeError, match="OUTSIDE"):
+        Config(data_dir=tmp_path, master_key=os.urandom(32), audit_key=os.urandom(32),
+               anchor_file=tmp_path / "anchors.log").validate()
+
+
+def test_anchors_verify_while_the_log_only_grows(anchored_app):
+    app, _ = anchored_app
+    _anchor(app)
+    Api(app, "carol").get("/api/documents")
+    _anchor(app)
+    Api(app, "alice").get("/api/documents")
+    result = audit_mod.verify_anchors(raw_db(app), app.config["TV"])
+    assert result == {"configured": True, "ok": True, "anchors_checked": 2, "problem": None}
+
+
+def test_truncating_the_tail_is_invisible_to_the_chain_but_caught_by_the_anchor(anchored_app):
+    """The exact hole the chain alone cannot close."""
+    app, _ = anchored_app
+    Api(app, "dave").get(f"/api/documents/{doc_ids(app)[SALARY]}")          # the evidence
+    _anchor(app)
+    last = audit_rows(app)[-1]["seq"]
+    _tamper(app, "DELETE FROM audit_log WHERE seq >= ?", last - 1)          # attacker removes the newest rows
+    db = raw_db(app)
+    assert audit_mod.verify(db, app.config["TV"])["ok"] is True             # chain alone: looks fine
+    anchors = audit_mod.verify_anchors(db, app.config["TV"])
+    assert anchors["ok"] is False and "missing" in anchors["problem"]
+    alerts = Api(app, "admin").get("/api/admin/alerts").get_json()["items"]
+    assert alerts[0]["kind"] == "audit_anchor_mismatch" and alerts[0]["severity"] == "critical"
+    assert Api(app, "admin").get("/api/admin/audit/verify").get_json()["anchors"]["ok"] is False
+
+
+def test_rewriting_an_anchored_record_is_caught_even_if_the_chain_is_recomputed_wrongly(anchored_app):
+    app, _ = anchored_app
+    _anchor(app)
+    seq = audit_rows(app)[-1]["seq"]
+    _tamper(app, "UPDATE audit_log SET hash=? WHERE seq=?", "a" * 64, seq)
+    result = audit_mod.verify_anchors(raw_db(app), app.config["TV"])
+    assert result["ok"] is False and "no longer matches" in result["problem"]
+
+
+def test_forged_or_malformed_anchor_lines_are_rejected(anchored_app):
+    app, anchor = anchored_app
+    _anchor(app)
+    head = audit_mod.head(raw_db(app))
+    bad_lines = {
+        "wrong signature": f"{head['seq']} {head['hash']} 2026-01-01T00:00:00Z {'0' * 64}\n",
+        "malformed": "this is not an anchor\n",
+        "too many fields": f"{head['seq']} {head['hash']} 2026-01-01T00:00:00Z {'0' * 64} extra\n",
+    }
+    original = anchor.read_text()
+    for why, line in bad_lines.items():
+        anchor.write_text(original + line)
+        result = audit_mod.verify_anchors(raw_db(app), app.config["TV"])
+        assert result["ok"] is False, why
+    anchor.write_bytes(b"\xff\xfe\x00 not ascii")
+    assert audit_mod.verify_anchors(raw_db(app), app.config["TV"])["ok"] is False
+
+
+def test_an_attacker_who_can_edit_the_anchor_file_but_lacks_the_key_cannot_hide_truncation(anchored_app):
+    """Deleting the anchor lines that expose the truncation is the attacker's next move.
+    That only works if the anchor store is writable by them - which is why it must live
+    off-box. What they cannot do is *replace* it with lines that verify."""
+    app, anchor = anchored_app
+    _anchor(app)
+    Api(app, "carol").get("/api/documents")
+    _anchor(app)
+    lines = anchor.read_text().splitlines()
+    forged = lines[0].rsplit(" ", 1)[0] + " " + "b" * 64          # edit a line, keep old signature
+    anchor.write_text(forged + "\n")
+    assert audit_mod.verify_anchors(raw_db(app), app.config["TV"])["ok"] is False
+
+
+def test_no_anchor_configured_is_reported_not_hidden(app):
+    result = audit_mod.verify_anchors(raw_db(app), app.config["TV"])
+    assert result["configured"] is False
+    alerts = Api(app, "admin").get("/api/admin/alerts").get_json()["items"]
+    assert "audit_anchor_off" in {a["kind"] for a in alerts}
+
+
+def test_configured_but_never_written_is_flagged(anchored_app):
+    app, _ = anchored_app
+    alerts = Api(app, "admin").get("/api/admin/alerts").get_json()["items"]
+    assert "audit_anchor_missing" in {a["kind"] for a in alerts}
+
+
+def test_refuses_to_anchor_a_broken_chain(anchored_app):
+    app, anchor = anchored_app
+    _tamper(app, "UPDATE audit_log SET actor_email='x@y.z' WHERE seq=1")
+    with pytest.raises(RuntimeError, match="fails verification"):
+        _anchor(app)
+    assert not anchor.exists()
+
+
+def test_cli_anchor_and_verify_commands(anchored_app):
+    app, _ = anchored_app
+    runner = app.test_cli_runner()
+    out = runner.invoke(args=["audit-anchor"])
+    assert out.exit_code == 0 and len(out.output.split()) == 4
+    assert runner.invoke(args=["audit-verify"]).exit_code == 0
+    _tamper(app, "DELETE FROM audit_log WHERE seq = (SELECT MAX(seq) FROM audit_log)")
+    assert runner.invoke(args=["audit-verify"]).exit_code == 2

@@ -1,7 +1,7 @@
 # THREATS.md
 
 Each entry: **what could go wrong → what I did → test that proves it** (or, for accepted risks, why I left it).
-Tests are in `tests/`; `scripts/mutation_check.py` removes 21 individual checks from the code and requires the suite to fail every time (currently 21/21 killed).
+Tests are in `tests/`; `scripts/mutation_check.py` removes 23 individual checks from the code and requires the suite to fail every time (currently 23/23 killed).
 
 Standard I held myself to: *the server decides, every request, from the database.* Nothing about rights lives in a cookie, a URL or the UI.
 
@@ -48,8 +48,8 @@ Design: **no capability tokens exist.** No signed download URLs, no JWTs, no cac
 | C3 | Change happens, record is lost (or vice-versa). | Change + record commit atomically. | `test_a_change_and_its_audit_record_commit_together` |
 | C4 | Quietly edit/delete a row via the app or SQL. | Three layers: (1) no app code path edits it; (2) DB triggers abort UPDATE/DELETE; (3) rows form an **HMAC‑SHA256 chain** keyed with a secret that is *not in the database*. | `test_the_application_database_user_cannot_update_or_delete_audit_rows` |
 | C5 | Attacker with raw file access drops the triggers and edits. | Detected by `verify()`: edited row, deleted middle row, reordered rows, rewritten link field, and a forged row using the wrong key. Admin dashboard shows chain status; a failure is a *critical* alert. | `test_editing_a_row_is_detected_even_with_the_triggers_gone`, `…deleting_a_row_from_the_middle…`, `…forging_a_record_without_the_audit_key…`, `…reordering…`, `…rewriting_only_the_stored_link_field…` |
-| C6 | **Truncating the tail** of the log. | **NOT fully defended.** A shorter chain is still a valid chain. `flask audit-head` prints the head hash for you to store somewhere the app can't write (email, WORM bucket, ticket); I did not build the external anchor. Accepted — see below. | — |
-| C7 | Attacker who steals **both** the DB and the audit key can rewrite history. | Keys are separate env vars, never in the repo/DB. If both are stolen the chain proves nothing. Mitigation = C6 external anchoring. Accepted. | — |
+| C6 | **Truncating the tail** of the log (a shorter chain is still a valid chain). | **Off-box anchors.** `flask audit-anchor` appends a signed `seq hash time mac` line to `TRUSTVAULT_ANCHOR_FILE`, which the app refuses to place inside the data directory. Verification fails if any anchored record is missing or changed, forged anchor lines are rejected, and a broken chain is never anchored. The admin dashboard raises a *critical* alert on mismatch and a visible nudge if anchoring isn't configured. **Residual risk:** records written after the newest anchor and then removed are undetectable — the window equals your anchor interval (run it from cron every few minutes). The anchor file only protects you if the attacker can't also edit it: keep it on separate/append-only storage or ship each line off the box. | `test_truncating_the_tail_is_invisible_to_the_chain_but_caught_by_the_anchor`, `test_forged_or_malformed_anchor_lines_are_rejected`, `test_refuses_to_anchor_a_broken_chain`, `test_anchor_must_live_outside_the_data_directory`, `test_cli_anchor_and_verify_commands` |
+| C7 | Attacker who steals **both** the DB and the audit key can rewrite history. | Keys are separate env vars, never in the repo/DB. If both are stolen the attacker can rebuild a chain, but anchors you already shipped off-box (C6) still expose any rewrite of anchored history. Anchors you did *not* ship off-box, and everything newer than the last anchor, remain at risk. Accepted. | — |
 | C8 | Forged/spoofed IP in the log (`X-Forwarded-For`). | Headers are ignored unless `TRUSTVAULT_PROXY_HOPS` says exactly how many trusted proxies exist (Werkzeug `ProxyFix`). Default 0. Misconfiguring this is an operator risk, documented in README. | — |
 | C9 | Log flooding / log injection. | Values are stored as JSON strings (never interpreted); UI renders with `textContent`. Failed-login flood is capped by per-IP throttle. | `test_per_address_throttle` |
 
@@ -91,7 +91,7 @@ Design: **no capability tokens exist.** No signed download URLs, no JWTs, no cac
 ## G. Accepted risks and things I did not build (honest list)
 
 1. **Downloaded copies can't be recalled** (B8). Mitigation is the audit record, not prevention.
-2. **Audit tail truncation / key+DB theft** (C6, C7). `audit-head` exists; the external anchor does not.
+2. **Audit records newer than the last anchor** (C6, C7): anchoring narrows the window to your anchor interval; it does not eliminate it, and it is only as safe as wherever you keep the anchors.
 3. **No MFA / SSO.** Passwords only. This is the weakest part of authentication; for real use I would put the app behind SSO.
 4. **No malware scanning** (E8).
 5. **SQLite, one writer, single node.** Chosen so that "decision + change + audit in one atomic transaction" is simple and demonstrably correct. Cost: not horizontally scalable.
@@ -102,4 +102,4 @@ Design: **no capability tokens exist.** No signed download URLs, no JWTs, no cac
 10. **Rate limiting is login-only** and in the database; no general API throttle. A fronting proxy should provide one.
 11. **Metadata visible to administrators**: names, categories, owner, share counts. They see *that* a file exists, never its content.
 12. **Timing of "found but forbidden" vs "missing"** is not equalised beyond identical bodies/status.
-13. **Test-suite caveat:** the mutation script covers the 21 checks I thought of; it is not exhaustive.
+13. **Test-suite caveat:** the mutation script covers the 25 checks I thought of; it is not exhaustive.

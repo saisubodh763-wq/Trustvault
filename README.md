@@ -49,7 +49,7 @@ Nothing is cached and nothing is pre‑signed. The cookie is an opaque random to
 
 ## How the audit trail is protected
 
-Append‑only rows, hash‑chained with HMAC‑SHA256 under a key that is **not in the database**; SQLite triggers refuse UPDATE/DELETE; `/api/admin/audit/verify` recomputes the chain and the admin dashboard raises a critical alert if it fails. The audit row for a download is written *before* the bytes are read, in the same transaction — no record, no bytes. Not defended: truncating the tail, or an attacker who steals both the database and the audit key. `flask audit-head` prints the head hash to store off‑box. See `THREATS.md`.
+Append‑only rows, hash‑chained with HMAC‑SHA256 under a key that is **not in the database**; SQLite triggers refuse UPDATE/DELETE; `/api/admin/audit/verify` recomputes the chain and the admin dashboard raises a critical alert if it fails. The audit row for a download is written *before* the bytes are read, in the same transaction — no record, no bytes. **Anchors** defend against someone deleting the newest records: `flask --app wsgi audit-anchor` (run it from cron every few minutes) appends a signed head hash to `TRUSTVAULT_ANCHOR_FILE`, kept *outside* the data volume; `audit-verify` and the admin alerts fail if any anchored record is missing or changed. Still not defended: records newer than the last anchor, and an attacker who controls both the database and the anchor store. See `THREATS.md`.
 
 ## Run locally
 
@@ -63,11 +63,11 @@ flask --app trustvault run                 # http://127.0.0.1:5000
 ## Tests
 
 ```bash
-pytest                                     # 189 tests (isolation matrix, revocation, audit tamper, uploads, authn, features)
-python scripts/mutation_check.py           # removes 21 authorisation checks one at a time; every one must make the suite fail
+pytest                                     # 197 tests (isolation matrix, revocation, audit tamper, uploads, authn, features)
+python scripts/mutation_check.py           # removes 23 authorisation checks one at a time; every one must make the suite fail
 ```
 
-`tests/test_isolation.py` runs every user against every document and every action, with expected results written by hand. `scripts/mutation_check.py` is the answer to "what if one check is removed?" — currently 21/21 killed. Two checks survived on the first run; the tests for them were added (see `PROMPTS.md`).
+`tests/test_isolation.py` runs every user against every document and every action, with expected results written by hand. `scripts/mutation_check.py` is the answer to "what if one check is removed?" — currently 25/25 killed. Two checks survived on the first run (of 21 then); the tests for them were added (see `PROMPTS.md`).
 
 ## Deploy (from a clean clone)
 
@@ -90,7 +90,7 @@ docker run -d -p 8000:8000 -v tv-data:/data \
 * Run **one** gunicorn worker (the Dockerfile does). SQLite is a single‑writer store.
 * **Real (non-demo) first admin:** omit `TRUSTVAULT_SEED_DEMO`, then
   `docker exec -e TRUSTVAULT_ADMIN_PASSWORD='…' <container> flask --app wsgi create-admin you@company.com`.
-* Operations: `flask --app wsgi purge` (destroy documents deleted > 30 days ago, blob + key), `audit-verify` (non-zero exit if broken), `audit-head` (store the output off‑box).
+* Operations: `flask --app wsgi purge` (destroy documents deleted > 30 days ago, blob + key), `audit-verify` (checks the chain **and** the anchors; non-zero exit if either fails), `audit-anchor` (append a signed chain-head line to `TRUSTVAULT_ANCHOR_FILE`; **schedule it every few minutes**, e.g. `*/5 * * * * docker exec <container> flask --app wsgi audit-anchor`, and keep the file outside the data volume or ship each line off the box).
 * `render.yaml` is a Render blueprint (Docker, 1 GB disk, health check `/healthz`); set the two keys in the dashboard.
 
 ## Layout

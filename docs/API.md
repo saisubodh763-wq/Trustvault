@@ -62,7 +62,7 @@ Every **POST/PATCH/DELETE** must also send `X-CSRF-Token` (returned by `/auth/lo
 | `POST /api/admin/users/{id}/revoke-sessions` | |
 | `GET /api/admin/documents` | **metadata only** (name, category, owner, share count, download count, refused count). No content, no download |
 | `GET /api/admin/audit` | filters: `actor`, `action`, `outcome`, `doc_id`, `actor_id`, `target_user_id`, `from`, `to`, `limit` ≤ 500, `offset` |
-| `GET /api/admin/audit/verify` | recomputes the HMAC chain; reports the first bad record |
+| `GET /api/admin/audit/verify` | recomputes the HMAC chain; reports the first bad record; also checks off-box anchors (`anchors` field) |
 | `GET /api/admin/alerts` | audit-chain failure, repeated refusals, bulk downloads, failed logins, admin password resets, edit grants |
 
 ## Audit event names

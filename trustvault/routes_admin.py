@@ -199,7 +199,9 @@ def audit_list():
 @bp.get("/audit/verify")
 @authed(role="admin")
 def audit_verify():
-    return jsonify(audit.verify(get_db(), cfg()))
+    out = audit.verify(get_db(), cfg())
+    out["anchors"] = audit.verify_anchors(get_db(), cfg())
+    return jsonify(out)
 
 
 @bp.get("/alerts")
@@ -219,6 +221,17 @@ def alerts():
     if not check["ok"]:
         add("critical", "audit_chain_broken",
             f"Audit trail fails verification at record {check['first_bad_seq']}: {check['problem']}")
+
+    anchors = audit.verify_anchors(db, cfg())
+    if anchors["ok"] is False:
+        add("critical", "audit_anchor_mismatch", f"Audit anchor check failed: {anchors['problem']}")
+    elif anchors["configured"] and anchors["ok"] is None:
+        add("medium", "audit_anchor_missing",
+            "Audit anchoring is configured but no anchor has been written yet (run flask audit-anchor)")
+    elif not anchors["configured"]:
+        add("low", "audit_anchor_off",
+            "Off-box audit anchoring is not configured: deleting the newest audit records "
+            "would go undetected (set TRUSTVAULT_ANCHOR_FILE and schedule flask audit-anchor)")
 
     for r in db.execute(
             "SELECT actor_email, COUNT(*) c FROM audit_log WHERE action='document.access_denied'"

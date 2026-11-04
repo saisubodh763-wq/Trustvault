@@ -68,10 +68,22 @@ def register(app):
 
     @app.cli.command("audit-verify")
     def audit_verify():
-        """Verify the audit hash chain; exit non-zero if it fails."""
-        result = audit.verify(connect(cfg.db_path), cfg)
-        click.echo(result)
-        raise SystemExit(0 if result["ok"] else 2)
+        """Verify the audit chain AND any off-box anchors; non-zero exit if either fails."""
+        db = connect(cfg.db_path)
+        result = audit.verify(db, cfg)
+        anchors = audit.verify_anchors(db, cfg)
+        click.echo({"chain": result, "anchors": anchors})
+        raise SystemExit(0 if result["ok"] and anchors["ok"] is not False else 2)
+
+    @app.cli.command("audit-anchor")
+    def audit_anchor():
+        """Append a signed chain-head anchor to TRUSTVAULT_ANCHOR_FILE and print it.
+        Run from cron (e.g. every 15 min) and ship the line off the box too."""
+        try:
+            line = audit.write_anchor(connect(cfg.db_path), cfg)
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc))
+        click.echo(line)
 
     @app.cli.command("audit-head")
     def audit_head():

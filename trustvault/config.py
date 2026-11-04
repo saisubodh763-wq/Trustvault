@@ -31,6 +31,7 @@ class Config:
     ip_failure_limit: int = 30          # failed logins per IP per 10 minutes
     proxy_hops: int = 0                 # trusted reverse proxies in front of us
     purge_after_days: int = 30
+    anchor_file: Path | None = None     # off-box audit anchors (see audit.py)
     testing: bool = False
 
     @property
@@ -46,6 +47,9 @@ class Config:
             raise RuntimeError("master and audit keys must each be 32 bytes")
         if self.master_key == self.audit_key:
             raise RuntimeError("master key and audit key must differ")
+        if self.anchor_file is not None and self.data_dir in (self.anchor_file, *self.anchor_file.parents):
+            raise RuntimeError("the audit anchor file must live OUTSIDE the data directory, "
+                               "or whoever can edit the data can edit the anchors too")
 
 
 def _load_key(name: str, data_dir: Path, production: bool) -> bytes:
@@ -82,6 +86,8 @@ def from_env() -> Config:
         audit_key=_load_key("TRUSTVAULT_AUDIT_KEY", data_dir, production),
         secure_cookies=production,
         proxy_hops=int(os.environ.get("TRUSTVAULT_PROXY_HOPS", "0")),
+        anchor_file=(Path(os.environ["TRUSTVAULT_ANCHOR_FILE"]).resolve()
+                     if os.environ.get("TRUSTVAULT_ANCHOR_FILE") else None),
     )
     cfg.validate()
     return cfg
