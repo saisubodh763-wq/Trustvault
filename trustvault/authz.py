@@ -82,8 +82,14 @@ def authorize(db: sqlite3.Connection, user, doc_id: str, action: str):
     level = effective_level(db, user, doc)
     if level is None:
         return Decision(False, "no_access"), None
-    if doc["deleted_at"] is not None and action not in DELETED_OK:
-        return Decision(False, "deleted", level=level), None
+    if doc["deleted_at"] is not None:
+        # A deleted document is invisible to everyone but its owner, and the
+        # owner may only do the DELETED_OK actions. Non-owners get the same
+        # answer as for a document that never existed (no state oracle).
+        if level != "owner":
+            return Decision(False, "deleted"), None
+        if action not in DELETED_OK:
+            return Decision(False, "deleted", level=level), None
     if RANK[level] < RANK[needed]:
         return Decision(False, "insufficient_level", level=level, can_read=True), None
     return Decision(True, "ok", level=level, can_read=True), doc

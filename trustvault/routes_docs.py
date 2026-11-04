@@ -26,6 +26,11 @@ def _upload_from_request():
     if f is None or not f.filename:
         raise ApiError(400, "a file is required (multipart field 'file')")
     data = f.read()
+    # MAX_CONTENT_LENGTH is only the transport guard (it includes multipart
+    # overhead); the file's own size limit is enforced here, exactly.
+    if len(data) > cfg().max_upload_bytes:
+        raise ApiError(413, f"file exceeds the {cfg().max_upload_bytes // (1024 * 1024) or 1} MB limit"
+                       if cfg().max_upload_bytes >= 1024 * 1024 else "file is too large")
     try:
         name, ext, mime = val.validate_upload(f.filename, data)
     except val.ValidationError as exc:
