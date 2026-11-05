@@ -5,7 +5,7 @@ A document platform where the wrong person cannot reach a file, and where you ca
 Flask + SQLite + AES‑256‑GCM encrypted blobs + a vanilla‑JS single-page UI (no inline scripts, no `innerHTML`).
 Why this stack: one process, one database file, and one `BEGIN IMMEDIATE` transaction per request means **"is this allowed → do it → record it" is a single atomic unit**. That is the property the whole design leans on, and it is easy to demonstrate. The cost (single writer, no scale‑out) is in `THREATS.md`.
 
-> **Live URL:** _not deployed yet — add it here after deploying (see "Deploy")._
+> **Live URL:** https://trustvault-8v9l.onrender.com
 > **Repository:** https://github.com/saisubodh763-wq/trustvault
 
 ## Demo accounts (seed data — public, demo only)
