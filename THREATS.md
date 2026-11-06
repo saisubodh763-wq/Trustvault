@@ -104,4 +104,4 @@ Design: **no capability tokens exist.** No signed download URLs, no JWTs, no cac
 12. **Timing of "found but forbidden" vs "missing"** is not equalised beyond identical bodies/status.
 13. **Test-suite caveat:** the mutation script covers the 25 checks I thought of; it is not exhaustive.
 
-14. **Oversized uploads are not audited.** Uploads over the size limit are rejected with HTTP 413 before the application's audit write, so they do not appear in the audit trail, and the UI shows no error message. Found while attack-testing the live deployment on 06-11-2026. Known, left as is; a fix would be a request-size check inside the app, with a test first.
+14. **Oversized uploads are not audited.** Uploads over the size limit are rejected with HTTP 413 before the application's audit write, so they do not appear in the audit trail,and the UI shows only a brief "request too large" toast. Found while attack-testing the live deployment on 06-11-2026. Known, left as is; a fix would be a request-size check inside the app, with a test first.
