@@ -91,7 +91,7 @@ Design: **no capability tokens exist.** No signed download URLs, no JWTs, no cac
 ## G. Accepted risks and things I did not build (honest list)
 
 1. **Downloaded copies can't be recalled** (B8). Mitigation is the audit record, not prevention.
-2. **Audit records newer than the last anchor** (C6, C7): anchoring narrows the window to your anchor interval; it does not eliminate it, and it is only as safe as wherever you keep the anchors.
+2. **Audit records newer than the last anchor** (C6, C7): anchoring narrows the window to your anchor interval; it does not eliminate it, and it is only as safe as wherever you keep the anchors.   On Render there is no second volume or scheduler. The anchor file lives in `/tmp` and is lost on restart, so anchor lines are copied off-box manually.
 3. **No MFA / SSO.** Passwords only. This is the weakest part of authentication; for real use I would put the app behind SSO.
 4. **No malware scanning** (E8).
 5. **SQLite, one writer, single node.** Chosen so that "decision + change + audit in one atomic transaction" is simple and demonstrably correct. Cost: not horizontally scalable.
