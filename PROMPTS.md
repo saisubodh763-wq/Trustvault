@@ -77,3 +77,11 @@ Most of the code was right first time, including the HMAC chain, the AAD binding
 
 * Your own dated prompts and the real commit links once history is pushed.
 * Any session where you disagreed with the tool's design (e.g. admins having no content rights was a decision I had to hold against convenience).
+
+### 06-11-2026: Attack-testing the live deployment
+
+- **What I tested:** Dave requesting a document ID he has no grant for, Alice calling /api/admin/users, repeated wrong logins, admin password reset.
+- **What I saw:** Dave got "document not found", Alice got "forbidden", the wrong logins ended in "account is locked", and the reset produced a temporary password with a forced change.
+- **What was wrong in my reading:** I first thought Carol's lockout had failed. The Audit tab showed my wrong attempts went to nobody@... (unknown_user), Carol's login was a real successful one, and the lock had triggered on Dave (locked).
+- **How I verified:** a control check as Carol (same ID downloaded for her, not for Dave) and the Audit tab entries.
+- **Commit:** https://github.com/saisubodh763-wq/Trustvault/commit/<hash>
