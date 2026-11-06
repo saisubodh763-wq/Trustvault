@@ -84,4 +84,4 @@ Most of the code was right first time, including the HMAC chain, the AAD binding
 - **What I saw:** Dave got "document not found", Alice got "forbidden", the wrong logins ended in "account is locked", and the reset produced a temporary password with a forced change.
 - **What was wrong in my reading:** I first thought Carol's lockout had failed. The Audit tab showed my wrong attempts went to nobody@... (unknown_user), Carol's login was a real successful one, and the lock had triggered on Dave (locked).
 - **How I verified:** a control check as Carol (same ID downloaded for her, not for Dave) and the Audit tab entries.
-- **Commit:** https://github.com/saisubodh763-wq/Trustvault/commit/<hash>
+- **Commit:** https://github.com/saisubodh763-wq/Trustvault/commit/b69691c
