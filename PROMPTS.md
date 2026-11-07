@@ -23,7 +23,7 @@ The standing instructions I gave the assistant, and which every later step was h
 
 **Wrong:** Both assertions were tautologies. The test would pass whether or not the audit record contained the right hash or the right *before* value, so it proved nothing about the one thing an audit trail is for: *which bytes* left, and *what changed*. It looked thorough and was green.
 
-**Instead:** Rewrote them to assert the exact hash of the version downloaded (`detail["sha256"] == sha256(b"plan2")`, `detail["version"] == 2`) and the exact before/after of the rename (`before == {"name": "plan.txt"}`, `after == {"name": "Plan v2"}`), plus the actor. Caught on a read-through before the first commit, so the committed version already has the fix: `bf15f78`. I then asked for a mutation check (standing instruction 3) so that this class of mistake is found mechanically rather than by reading.
+**Instead:** Rewrote them to assert the exact hash of the version downloaded (`detail["sha256"] == sha256(b"plan2")`, `detail["version"] == 2`) and the exact before/after of the rename (`before == {"name": "plan.txt"}`, `after == {"name": "Plan v2"}`), plus the actor. Caught on a read-through before the first commit, so the committed version already has the fix: `792b7e2`. I then asked for a mutation check (standing instruction 3) so that this class of mistake is found mechanically rather than by reading.
 
 ## Entry 2 — 2026-11-02/04 — A 403 that confirmed a deleted document exists  *(access control)*
 
@@ -33,7 +33,7 @@ The standing instructions I gave the assistant, and which every later step was h
 
 **Wrong:** A viewer with a read grant who POSTed `/restore` on a deleted document got **403**, while someone with no grant got 404. That told Carol "this document still exists in a deleted state", and let *anyone holding a grant* probe the state of a trashed document. The tests I had written first asserted the correct behaviour (404 for non-owners), and failed. The AI's first reaction was to treat the test as wrong; I checked the rule and the code was wrong.
 
-**Instead:** Deleted documents now return the same "not found" decision for every non-owner before any level comparison (`authz.py`), so existence/state can't be probed. A later mutation (`deleted documents hidden from non-owners`) confirms the suite fails if this branch is removed. Fixed in `7aed6e0`.
+**Instead:** Deleted documents now return the same "not found" decision for every non-owner before any level comparison (`authz.py`), so existence/state can't be probed. A later mutation (`deleted documents hidden from non-owners`) confirms the suite fails if this branch is removed. Fixed in `660111e`.
 
 ## Entry 3 — 2026-11-04 — "The size limit is enforced" (it wasn't)  *(upload validation)*
 
@@ -43,7 +43,7 @@ The standing instructions I gave the assistant, and which every later step was h
 
 **Wrong:** The test returned **201**: the 64 KB of slack meant files up to the limit *plus 64 KB* were stored. The AI had treated a transport-level cap as the application's rule. A 20 MB limit would have silently been 20.06 MB, and, worse, the configured limit did nothing for small configured values.
 
-**Instead:** Kept `MAX_CONTENT_LENGTH` as a coarse transport guard and enforced the exact per-file limit in `_upload_from_request()` with a 413; the test now checks 1,999 bytes accepted, 5,000 refused, and 300 KB refused by the transport cap. Fixed in `7aed6e0`.
+**Instead:** Kept `MAX_CONTENT_LENGTH` as a coarse transport guard and enforced the exact per-file limit in `_upload_from_request()` with a 413; the test now checks 1,999 bytes accepted, 5,000 refused, and 300 KB refused by the transport cap. Fixed in `660111e`.
 
 ## Entry 4 — 2026-11-04 — Two authorisation checks nothing depended on  *(access control + audit trail)*
 
@@ -55,7 +55,7 @@ The standing instructions I gave the assistant, and which every later step was h
 * *Disabled users' sessions stop working* (`web.authenticate`): `PATCH active=false` also revokes sessions, so the per-request `active` check was never the thing that stopped the request. Tests passed whether or not the check existed.
 * *Audit chain link verification*: the stored `prev_hash` column isn't part of the signed row content, so an attacker editing only that column was **undetectable** without the explicit link check, and no test did that.
 
-**Instead:** Added `test_disabled_flag_alone_blocks_a_live_session_even_if_revocation_was_missed` (flip `active` in SQL with the session still live) and `test_rewriting_only_the_stored_link_field_is_detected`. Re-ran: **21/21 killed**. (Committed after this file was written; see the commit following `381ba76`.)
+**Instead:** Added `test_disabled_flag_alone_blocks_a_live_session_even_if_revocation_was_missed` (flip `active` in SQL with the session still live) and `test_rewriting_only_the_stored_link_field_is_detected`. Re-ran: **21/21 killed**. (Committed after this file was written; see the commit following `9432793`.)
 
 ## Entry 5 — 2026-11-02 — Time tests that tested the wrong thing  *(revocation)*
 
@@ -65,7 +65,7 @@ The standing instructions I gave the assistant, and which every later step was h
 
 **Wrong:** Advancing 3,601 s also exceeds the 60-minute **idle** timeout, so the request returned **401**, not the 404 that proves *the grant* expired. The session test never reached the absolute limit and only checked "eventually 401" with an unreachable `else`. Both would have passed for the wrong reason.
 
-**Instead:** Advance in two 30-minute steps so the session stays fresh, then assert 404 specifically; for the absolute limit, record at which step the 401 arrives and assert it is at the 8-hour mark (±50 min). Fixed before the first commit: `bf15f78`.
+**Instead:** Advance in two 30-minute steps so the session stays fresh, then assert 404 specifically; for the absolute limit, record at which step the 401 arrives and assert it is at the 8-hour mark (±50 min). Fixed before the first commit: `792b7e2`.
 
 ---
 
@@ -91,4 +91,4 @@ Most of the code was right first time, including the HMAC chain, the AAD binding
 - **What I saw:** one file listed, `trustvault.db`, mode 644, while the blobs were owner-only.
 - **What was wrong in my reading:** I first checked only the blobs folder and assumed everything was fine. The `find` showed the database was the exception. I also cannot watch the new test fail on Windows, because it is skipped there.
 - **How I verified:** after the fix and redeploy, the same `find` prints nothing and `ls -la /data` shows `-rw-------`.
-- **Commit:** https://github.com/saisubodh763-wq/Trustvault/commit/4e746a8
+- **Commit:** https://github.com/saisubodh763-wq/Trustvault/commit/88dc0e8
