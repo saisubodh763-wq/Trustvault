@@ -207,3 +207,15 @@ def test_purge_destroys_blob_and_key_for_deleted_documents(app):
     alice = Api(app, "alice")                       # old session expired during the 31 days
     assert alice.post(f"/api/documents/{acme}/restore").status_code == 404      # gone for good
     assert Api(app, "carol").get(f"/api/documents/{acme}/download").status_code == 404
+
+import os, pytest
+
+@pytest.mark.skipif(os.name == "nt", reason="no POSIX modes on Windows")
+def test_database_files_are_owner_only(app):
+    from pathlib import Path
+    Api(app, "alice").upload("x.txt", b"x")
+    db_path = Path(app.config["TV"].db_path)
+    for suffix in ("", "-wal", "-shm"):
+        p = Path(str(db_path) + suffix)
+        if p.exists():
+            assert (p.stat().st_mode & 0o077) == 0, p.name

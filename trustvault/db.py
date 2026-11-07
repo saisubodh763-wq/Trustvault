@@ -8,6 +8,7 @@ revocation either happens entirely before or entirely after it.
 from __future__ import annotations
 
 import contextlib
+import os
 import sqlite3
 from pathlib import Path
 
@@ -134,11 +135,18 @@ def connect(path: Path | str) -> sqlite3.Connection:
 
 def init_db(path: Path | str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
+    if os.name != "nt":
+        os.umask(0o077)  # new files (db, -wal, -shm) are owner-only
     conn = connect(path)
     try:
         conn.executescript(SCHEMA)
     finally:
         conn.close()
+    if os.name != "nt":
+        for suffix in ("", "-wal", "-shm"):
+            p = Path(str(path) + suffix)
+            if p.exists():
+                os.chmod(p, 0o600)  # tighten files that already exist
 
 
 @contextlib.contextmanager
