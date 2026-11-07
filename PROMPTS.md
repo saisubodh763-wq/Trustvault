@@ -83,4 +83,12 @@ Most of the code was right first time, including the HMAC chain, the AAD binding
 - **What I tested:** uploads (svg, html, fake pdf, a 27 MB file) as Alice; editing the session cookie; a stale session in Dave's window.
 - **What I saw:** svg, html and the fake pdf were refused. big.pdf got HTTP 413 with a brief "request too large" toast and no audit record. After editing the cookie in DevTools the page still showed documents. With curl, the real cookie returned 200 and four altered variants all returned 401. Signing out of Dave's stale window gave "invalid or missing CSRF token".
 - **What was wrong in my reading:** I called the browser cookie result a finding before running the curl control. I also said the UI showed no message for big uploads, but a toast appears.
-- **How I verified:** a control request, four altered variants, the Network tab and the Audit tab.
+- **How I verified:** a control request, four altered variants, the Network tab and the Audit tab.g
+
+### 07-11-2026: Database file permissions
+
+- **What I tested:** `find /data -type f -perm /077` on the live container.
+- **What I saw:** one file listed, `trustvault.db`, mode 644, while the blobs were owner-only.
+- **What was wrong in my reading:** I first checked only the blobs folder and assumed everything was fine. The `find` showed the database was the exception. I also cannot watch the new test fail on Windows, because it is skipped there.
+- **How I verified:** after the fix and redeploy, the same `find` prints nothing and `ls -la /data` shows `-rw-------`.
+- **Commit:** https://github.com/saisubodh763-wq/Trustvault/commit/4e746a8
