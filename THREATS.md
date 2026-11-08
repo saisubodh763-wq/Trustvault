@@ -107,3 +107,6 @@ Design: **no capability tokens exist.** No signed download URLs, no JWTs, no cac
 14. **Oversized uploads are not audited.** Uploads over the size limit are rejected with HTTP 413 before the application's audit write, so they do not appear in the audit trail,and the UI shows only a brief "request too large" toast. Found while attack-testing the live deployment on 06-11-2026. Known, left as is; a fix would be a request-size check inside the app, with a test first.
 
 15. **Database file was group/world-readable (fixed).** Found by running `find /data -type f -perm /077` on the live container: `trustvault.db` was mode 644 while blobs were owner-only. Fixed by setting umask 077 and chmod 600 on the db, `-wal` and `-shm` files in `init_db`. The regression test is skipped on Windows (NTFS has no POSIX modes), so it was verified on the deployed Linux container: the same `find` now prints nothing.
+
+16. **No browser (UI) tests.** The UI was driven by hand only.
+17. **One permission test fails on Windows only.** `test_files_on_disk_are_ciphertext_with_opaque_names` asserts POSIX modes, which NTFS does not have. It passes on Linux, and the deployed container was checked directly.
