@@ -107,3 +107,17 @@ tests/  scripts/mutation_check.py  THREATS.md  PROMPTS.md  docs/API.md  docs/WRI
 ```
 
 Docs: [`THREATS.md`](THREATS.md) · [`PROMPTS.md`](PROMPTS.md) · [`docs/API.md`](docs/API.md) · [`docs/WRITEUP.md`](docs/WRITEUP.md)
+
+## Known gaps (deliberately left)
+
+Details in THREATS.md section G.
+
+- Authentication is passwords only: no MFA/SSO.
+- No malware scanning; files are checked by type and size only.
+- No master-key rotation tool (per-file wrapped keys make it possible, I did not build it).
+- No break-glass recovery: admins cannot read documents by design, so a leaver's documents are orphaned.
+- Uploads over the size limit get HTTP 413 before the audit write, so they are not audited.
+- Audit anchoring on Render is manual (the anchor file is lost on restart).
+- Rate limiting covers login only.
+- No browser (UI) tests; the UI was tested by hand.
+- One file-permission test fails on Windows only (NTFS has no POSIX modes); it passes on Linux.
